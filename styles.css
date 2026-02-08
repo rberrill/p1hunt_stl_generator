@@ -92,7 +92,7 @@ canvas {
   width: min(100%, 780px);
   border: 1px solid var(--border);
   background: #0e1116;
-  image-rendering: pixelated;
+  image-rendering: auto;
 }
 
 aside {
