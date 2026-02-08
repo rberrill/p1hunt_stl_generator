@@ -7,7 +7,6 @@ const exportSvgBtn = document.getElementById('exportSvgBtn');
 const resetAssignmentsBtn = document.getElementById('resetAssignmentsBtn');
 const downloadLink = document.getElementById('downloadLink');
 const activeColorSelect = document.getElementById('activeColorSelect');
-const dpiInput = document.getElementById('dpiInput');
 
 const ctx = previewCanvas.getContext('2d', { willReadFrequently: true });
 
@@ -24,8 +23,10 @@ fileInput.addEventListener('change', async () => {
   const file = fileInput.files?.[0];
   if (!file) return;
   const bitmap = await createImageBitmap(file);
-  state.width = bitmap.width;
-  state.height = bitmap.height;
+  const maxSize = 300;
+  const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+  state.width = Math.max(1, Math.round(bitmap.width * scale));
+  state.height = Math.max(1, Math.round(bitmap.height * scale));
   previewCanvas.width = state.width;
   previewCanvas.height = state.height;
   ctx.drawImage(bitmap, 0, 0, state.width, state.height);
@@ -103,9 +104,7 @@ resetAssignmentsBtn.addEventListener('click', () => {
 });
 
 exportSvgBtn.addEventListener('click', () => {
-  const dpi = clamp(parseInt(dpiInput.value, 10) || 72, 72, 1200);
-  dpiInput.value = String(dpi);
-  const svg = buildSvg(dpi);
+  const svg = buildSvg();
   const blob = new Blob([svg], { type: 'image/svg+xml' });
   const url = URL.createObjectURL(blob);
   downloadLink.href = url;
@@ -168,11 +167,9 @@ function redrawPreview() {
   ctx.putImageData(out, 0, 0);
 }
 
-function buildSvg(dpi) {
+function buildSvg() {
   const lines = [];
-  const widthInches = state.width / dpi;
-  const heightInches = state.height / dpi;
-  lines.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${state.width} ${state.height}" width="${widthInches.toFixed(4)}in" height="${heightInches.toFixed(4)}in" shape-rendering="crispEdges">`);
+  lines.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${state.width} ${state.height}" shape-rendering="crispEdges">`);
 
   for (let y = 0; y < state.height; y += 1) {
     let x = 0;
