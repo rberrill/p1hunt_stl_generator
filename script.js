@@ -1,5 +1,7 @@
 const fileInput = document.getElementById('fileInput');
 const colorDepthInput = document.getElementById('colorDepth');
+const maxDimensionInput = document.getElementById('maxDimension');
+const smoothingInput = document.getElementById('smoothing');
 const quantizeBtn = document.getElementById('quantizeBtn');
 const previewCanvas = document.getElementById('previewCanvas');
 const paletteEl = document.getElementById('palette');
@@ -23,7 +25,7 @@ fileInput.addEventListener('change', async () => {
   const file = fileInput.files?.[0];
   if (!file) return;
   const bitmap = await createImageBitmap(file);
-  const maxSize = 300;
+  const maxSize = clamp(parseInt(maxDimensionInput.value, 10) || 2048, 128, 4096);
   const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
   state.width = Math.max(1, Math.round(bitmap.width * scale));
   state.height = Math.max(1, Math.round(bitmap.height * scale));
@@ -168,26 +170,141 @@ function redrawPreview() {
 }
 
 function buildSvg() {
+  const smoothingPasses = clamp(parseInt(smoothingInput.value, 10) || 1, 0, 3);
   const lines = [];
-  lines.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${state.width} ${state.height}" shape-rendering="crispEdges">`);
+  lines.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${state.width} ${state.height}">`);
 
-  for (let y = 0; y < state.height; y += 1) {
-    let x = 0;
-    while (x < state.width) {
-      const idx = y * state.width + x;
-      const label = state.assignments[idx];
-      let run = 1;
-      while (x + run < state.width && state.assignments[y * state.width + x + run] === label) {
-        run += 1;
+  for (let label = 0; label < state.palette.length; label += 1) {
+    const contours = traceContours(label);
+    if (contours.length === 0) continue;
+    const color = rgbToHex(state.palette[label]);
+
+    for (const contour of contours) {
+      let points = simplifyCollinear(contour);
+      for (let i = 0; i < smoothingPasses; i += 1) {
+        points = chaikin(points);
       }
-      const color = rgbToHex(state.palette[label]);
-      lines.push(`<rect x="${x}" y="${y}" width="${run}" height="1" fill="${color}" />`);
-      x += run;
+      if (points.length < 3) continue;
+      lines.push(`<path d="${pointsToPath(points)}" fill="${color}" />`);
     }
   }
 
   lines.push('</svg>');
   return lines.join('\n');
+}
+
+function traceContours(targetLabel) {
+  const edges = new Map();
+
+  for (let y = 0; y < state.height; y += 1) {
+    for (let x = 0; x < state.width; x += 1) {
+      const idx = y * state.width + x;
+      if (state.assignments[idx] !== targetLabel) continue;
+
+      if (y === 0 || state.assignments[(y - 1) * state.width + x] !== targetLabel) {
+        addEdge(x, y, x + 1, y);
+      }
+      if (x === state.width - 1 || state.assignments[y * state.width + x + 1] !== targetLabel) {
+        addEdge(x + 1, y, x + 1, y + 1);
+      }
+      if (y === state.height - 1 || state.assignments[(y + 1) * state.width + x] !== targetLabel) {
+        addEdge(x + 1, y + 1, x, y + 1);
+      }
+      if (x === 0 || state.assignments[y * state.width + x - 1] !== targetLabel) {
+        addEdge(x, y + 1, x, y);
+      }
+    }
+  }
+
+  const contours = [];
+  while (edges.size > 0) {
+    const startKey = edges.keys().next().value;
+    const contour = [];
+    let currentKey = startKey;
+
+    while (true) {
+      const [x, y] = parsePoint(currentKey);
+      contour.push([x, y]);
+      const nextList = edges.get(currentKey);
+      if (!nextList || nextList.length === 0) break;
+      const nextKey = nextList.pop();
+      if (nextList.length === 0) edges.delete(currentKey);
+      currentKey = nextKey;
+      if (currentKey === startKey) break;
+    }
+
+    if (contour.length >= 3) {
+      contours.push(contour);
+    }
+  }
+
+  return contours;
+
+  function addEdge(x1, y1, x2, y2) {
+    const start = pointKey(x1, y1);
+    const end = pointKey(x2, y2);
+    if (!edges.has(start)) edges.set(start, []);
+    edges.get(start).push(end);
+  }
+}
+
+function simplifyCollinear(points) {
+  if (points.length <= 3) return points;
+  const out = [];
+
+  for (let i = 0; i < points.length; i += 1) {
+    const prev = points[(i - 1 + points.length) % points.length];
+    const curr = points[i];
+    const next = points[(i + 1) % points.length];
+
+    const dx1 = curr[0] - prev[0];
+    const dy1 = curr[1] - prev[1];
+    const dx2 = next[0] - curr[0];
+    const dy2 = next[1] - curr[1];
+    if (dx1 * dy2 === dy1 * dx2) continue;
+    out.push(curr);
+  }
+
+  return out;
+}
+
+function chaikin(points) {
+  const smoothed = [];
+  for (let i = 0; i < points.length; i += 1) {
+    const p0 = points[i];
+    const p1 = points[(i + 1) % points.length];
+    smoothed.push([
+      p0[0] * 0.75 + p1[0] * 0.25,
+      p0[1] * 0.75 + p1[1] * 0.25,
+    ]);
+    smoothed.push([
+      p0[0] * 0.25 + p1[0] * 0.75,
+      p0[1] * 0.25 + p1[1] * 0.75,
+    ]);
+  }
+  return smoothed;
+}
+
+function pointsToPath(points) {
+  const [startX, startY] = points[0];
+  const parts = [`M ${fmt(startX)} ${fmt(startY)}`];
+  for (let i = 1; i < points.length; i += 1) {
+    parts.push(`L ${fmt(points[i][0])} ${fmt(points[i][1])}`);
+  }
+  parts.push('Z');
+  return parts.join(' ');
+}
+
+function pointKey(x, y) {
+  return `${x},${y}`;
+}
+
+function parsePoint(key) {
+  return key.split(',').map(Number);
+}
+
+function fmt(v) {
+  return Number(v.toFixed(3));
 }
 
 function quantizeImage(imageData, k) {

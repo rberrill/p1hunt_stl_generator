@@ -13,3 +13,9 @@ python3 -m http.server 8000
 ```
 
 Then open `http://localhost:8000`.
+
+
+## Quality tips
+
+- Increase **Max working dimension** to keep more source detail before quantization.
+- Increase **SVG smoothing passes** (0-3) to round jagged stair-step edges in the exported vector.
