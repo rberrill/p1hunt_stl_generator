@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PNG to 2D Vector Converter</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>PNG → 2D Vector (SVG)</h1>
+      <p class="subtitle">
+        Upload a PNG, choose a color depth, then click image regions to assign them to output colors.
+      </p>
+
+      <section class="controls">
+        <label>
+          PNG file
+          <input id="fileInput" type="file" accept="image/png" />
+        </label>
+
+        <label>
+          Color depth (number of colors)
+          <input id="colorDepth" type="number" min="2" max="16" value="4" />
+        </label>
+
+        <button id="quantizeBtn" disabled>Generate color layers</button>
+      </section>
+
+      <section class="workspace">
+        <div>
+          <h2>Editable preview</h2>
+          <p class="hint">Select a target output color and click connected regions to assign them.</p>
+          <canvas id="previewCanvas"></canvas>
+        </div>
+
+        <aside>
+          <h2>Palette & assignment</h2>
+          <label>
+            Active output color
+            <select id="activeColorSelect"></select>
+          </label>
+          <div id="palette"></div>
+
+          <button id="resetAssignmentsBtn" disabled>Reset assignments</button>
+          <button id="exportSvgBtn" disabled>Export SVG</button>
+          <a id="downloadLink" hidden>Download SVG</a>
+        </aside>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
